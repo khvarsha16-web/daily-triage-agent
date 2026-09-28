@@ -41,7 +41,7 @@ def main() -> None:
         )
 
     result = send_message(
-        token, chat_id, "Test message from Coursework Delegation Agent."
+        token, chat_id, "Test message from Daily Triage Agent."
     )
 
     if result.get("ok"):

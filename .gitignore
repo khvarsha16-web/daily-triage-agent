@@ -1,6 +1,9 @@
 # Personal working/meeting notes — never tracked or pushed
 notes/
 
+# Personal course documents (syllabi, to-do lists, etc.) — never tracked or pushed
+data/
+
 # Environment / secrets
 .env
 .env.*
