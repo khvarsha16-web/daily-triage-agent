@@ -39,10 +39,8 @@ Status (2026-10-01): **the full pipeline runs end to end.**
   prints its tokens and estimated cost.
 - **Telegram Delivery:** working again — `scripts/send_briefing.py`
   sends a short version of the briefing (see "Telegram Delivery").
-- **Not done yet:** the real personal import hasn't been run, so
-  `data/parsed/personal.json` doesn't exist and the Oct 5 appointment
-  (moved into the file) is missing from briefings until it is. See
-  "Next Session".
+- **Personal import:** first real import run and accepted 2026-10-01
+  (the Oct 5 appointment). Re-run after each edit of the task file.
 
 **Personal-data dependency:** `judgment_core.py` loads
 `data/parsed/predictive.json`, `prescriptive.json` and `agentic.json` at
@@ -278,6 +276,9 @@ editing; it's never automatic.
   saving.
 - **Merge:** each confirmed item becomes a `Task` whose description is
   the user's line unedited, with `title` and `due` from the import.
+- **Ids** are `personal-<title slug>`, with a leading "personal" in the
+  title not repeated (e.g. "Personal appointment" →
+  `personal-appointment`).
 
 ### 14-day horizon
 
@@ -384,10 +385,6 @@ in Telegram — those stay in the terminal.
 
 What's left:
 
-- **Run the real personal import:** `python3
-  scripts/import_personal_tasks.py` on `data/personal_tasks.txt`, then
-  review and accept. Until then `personal.json` doesn't exist and the
-  Oct 5 appointment is missing from briefings.
 - **README** for the repo.
 - **Demo practice** for the presentation.
 - **Optional stretch — tap-to-complete:** mark a task done from the

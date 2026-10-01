@@ -254,6 +254,9 @@ def make_ids(items: list[dict], taken: set[str]) -> None:
     """Stable readable ids from titles, made unique in code."""
     for item in items:
         slug = re.sub(r"[^a-z0-9]+", "-", item["title"].lower()).strip("-")[:40]
+        # "Personal appointment" → "personal-appointment", not
+        # "personal-personal-appointment".
+        slug = slug.removeprefix("personal-")
         base = f"personal-{slug or 'task'}"
         new_id, n = base, 2
         while new_id in taken:
