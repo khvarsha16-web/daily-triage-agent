@@ -12,15 +12,20 @@ dates) and overdue detection happen in code, not in the model; overdue
 tasks are listed separately for the user to confirm, never sent to the
 model to guess about.
 
-Predictive tasks come from the parsed syllabus (data/parsed/
-predictive.json, made by extract_syllabus.py) merged with the user's own
-facts in PREDICTIVE_OVERLAY; all other tasks are still hand-typed.
+Predictive, Prescriptive and Agentic AI coursework comes from the parsed
+syllabi (data/parsed/<name>.json, made by extract_syllabus.py) merged with
+the user's own facts in each course's overlay; all other tasks (and the
+Agentic AI Final Presentation, whose date isn't known yet) are
+hand-typed. The Monday Agentic AI class is a fixed commitment added to
+Must-Do in code, not ranked by the model.
 Prints to stdout only; nothing is saved or sent to Telegram."""
 
 from __future__ import annotations
 
 import json
 import os
+import re
+import sys
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -30,6 +35,10 @@ import anthropic
 ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 
 MODEL = "claude-sonnet-5"
+# Sonnet 5 list prices, dollars per million tokens. Thinking tokens are
+# billed as output and are already counted in usage.output_tokens.
+INPUT_PRICE_PER_MTOK = 2.00
+OUTPUT_PRICE_PER_MTOK = 10.00
 DAILY_BUDGET_HOURS = 6
 # Smallest useful study slice: coursework left in Can-Do while at least
 # this much budget remains counts as displaced.
@@ -52,7 +61,7 @@ LECTURE_END_BUFFER_DAYS = 2
 # wired in, so it will drift out of date as tasks get done.
 TODAY = date.today()
 
-TUE, THU, SAT = 1, 3, 5  # date.weekday() values
+MON, TUE, THU, SAT = 0, 1, 3, 5  # date.weekday() values
 
 
 @dataclass
@@ -86,6 +95,9 @@ class Series:
     weekdays: tuple[int, ...]
     episodes_done: int
     template: EpisodeTemplate | None = None
+    # Episodes already posted. The next post is never one of these, even
+    # on its own posting day (e.g. posted earlier today).
+    episodes_posted: int = 0
     # Hours left per stage on the first unfinished episode, e.g.
     # {"editing": 2}. Stages not listed are done. None means the episode
     # hasn't been started, so every stage's full template estimate applies.
@@ -115,6 +127,7 @@ MOO_SERIES = Series(
     episodes_done=4,
     template=MOO_EPISODE,
     next_episode_hours_left={"video generation + editing": 2},
+    episodes_posted=1,  # episode 1 posted Thu Oct 1
 )
 
 
@@ -156,8 +169,15 @@ class Task:
     # Fixed hours of a not-splittable block; when scheduled, hours_today
     # must equal this exactly.
     block_hours: float | None = None
+    # No real deadline behind it (e.g. an extra-credit homework): never
+    # forced into Must-Do, no check-ins, and it simply drops off after its
+    # date instead of showing as overdue.
+    optional: bool = False
     # Parsed item the extractor flagged (e.g. no date found).
     needs_review: bool = False
+    # Not shown at all before this date (not even inside the horizon) —
+    # e.g. a task the user doesn't want to see until they start it.
+    hidden_until: date | None = None
     # Generated posting task for a series: always stands for the series'
     # NEXT post on or after TODAY, so its text and facts are computed at
     # run time. Only the next post exists; once its date passes, the one
@@ -184,6 +204,9 @@ class Overlay:
     completed: bool = False
     # Fixed hours of a not-splittable block (e.g. a lecture's 3h).
     block_hours: float | None = None
+    optional: bool = False
+    # Lead time before the due date, same principle as a hard-date buffer.
+    buffer_days: int = 0
 
 
 LECTURE_STUDY = "About 3h to watch and study, self-paced within its week window."
@@ -202,10 +225,9 @@ PREDICTIVE_OVERLAY = {
         booked=date(2026, 12, 5), booked_time="11:30am", major_academic=True
     ),
     "pred-deliverable-final-project-proposal": Overlay(
-        text=f"{GROUP_DELIVERABLE} Multi-step: needs early coordination, a "
-        "mid-point check, and a final check before submission — no fixed "
-        "checkpoint dates given, that pacing is for the model to decide. "
-        "Coordination is mostly messaging the group and takes 15-20 minutes.",
+        text=f"{GROUP_DELIVERABLE} Initial group coordination done Oct 1. "
+        "Full proposal work starts Sun Oct 4.",
+        start_after=date(2026, 10, 4),
         major_academic=True,
     ),
     "pred-deliverable-preliminary-project-report": Overlay(
@@ -228,22 +250,77 @@ PREDICTIVE_OVERLAY = {
 
 # Overlay problems found while merging (unknown ids, booked dates outside
 # the syllabus window). Kept for inspection, not sent to the model.
+EXAM_WINDOW = "Exam window: 8:00am-11:59pm CT."
+HW_DUE = "Due by 11:59 PM CT; up to 12 hours late for partial credit."
+
+AGENTIC_OVERLAY = {
+    "agai-deliverable-mini-project": Overlay(
+        text="Solo build: one small agentic AI tool, presented live in class "
+        "in a few minutes (the problem, how you built it, what it does). 20% "
+        "of grade. Ongoing work — needs parallel time blocks for both "
+        "continued building and presentation prep/testing.",
+        major_academic=True,
+    ),
+    "agai-deliverable-proposal-presentations": Overlay(
+        text="Team of three (teams assigned in Class 5). Short pitch "
+        "presented live in class: the problem, why it genuinely needs an "
+        "agent, the intended tools and approach, and where it lives in the "
+        "repository. 10% of grade.",
+        major_academic=True,
+    ),
+}
+
+# From the Agentic AI syllabus's "Class Hours & Location" (outside the
+# schedule table, so not parsed): "Mondays 7:00pm - 9:45pm, Online".
+AGENTIC_CLASS_TIME = "7:00-9:45pm, online"
+AGENTIC_CLASS = f"Agentic AI class — Mondays {AGENTIC_CLASS_TIME}"
+AGENTIC_CLASS_HOURS = 2.75
+
+PRESCRIPTIVE_OVERLAY = {
+    "pres-exam-1": Overlay(
+        text="5 lectures and 2 homeworks to review, plus mock practice "
+        f"questions. {EXAM_WINDOW}",
+        start_after=date(2026, 9, 29),
+        major_academic=True,
+    ),
+    "pres-exam-2": Overlay(text=EXAM_WINDOW, major_academic=True),
+    "pres-exam-3": Overlay(text=EXAM_WINDOW, major_academic=True),
+    # Homework submissions need 2 days of lead time before the due date.
+    "pres-deliverable-hw-1": Overlay(text=HW_DUE, buffer_days=2, completed=True),
+    "pres-deliverable-hw-2": Overlay(text=HW_DUE, buffer_days=2, completed=True),
+    "pres-deliverable-hw-3": Overlay(text=HW_DUE, buffer_days=2),
+    "pres-deliverable-hw-4": Overlay(text=HW_DUE, buffer_days=2),
+    "pres-deliverable-hw-5": Overlay(text=HW_DUE, buffer_days=2),
+    "pres-deliverable-hw-6-optional": Overlay(
+        text=HW_DUE, buffer_days=2, optional=True
+    ),
+    **{f"pres-lecture-week-{n}": Overlay(completed=True) for n in range(1, 6)},
+    **{
+        f"pres-lecture-week-{n}": Overlay(block_hours=3)
+        for n in (7, 8, 9, 10, 12, 13, 15)
+    },
+}
+
 OVERLAY_WARNINGS: list[str] = []
 
 
 @dataclass
 class ContextNote:
-    """A parsed calendar fact that isn't a task (e.g. a break). Shown to
-    the model as context only; never listed in Must-Do, Can-Do or
-    Upcoming."""
+    """A parsed calendar fact that isn't a task (a break, or a live class
+    session). Shown to the model as context only; never listed in Must-Do,
+    Can-Do or Upcoming."""
 
     course: str
+    kind: str
     title: str
     start: date
     end: date
+    time: str = ""
 
 
 CONTEXT_NOTES: list[ContextNote] = []
+# Each parsed syllabus's semester, by name, as saved in its parsed file.
+SEMESTERS: dict[str, tuple[date, date]] = {}
 
 
 def parsed_item_to_task(item: dict, overlay: Overlay, course: str) -> Task:
@@ -251,6 +328,10 @@ def parsed_item_to_task(item: dict, overlay: Overlay, course: str) -> Task:
     end = date.fromisoformat(item["date_end"]) if item["date_end"] else None
 
     title = item["title"]
+    week = re.search(r"-lecture-week-(\d+)$", item["id"])
+    if item["kind"] == "lecture" and week:
+        # Unnumbered lectures (ids by week): say so in the task text itself.
+        title = f"Week {week.group(1)} lecture: {title}"
     parts = [f"{course} — {title}{'' if title[-1] in '.!?' else '.'}"]
     if overlay.booked:
         when = f"{fmt_date(overlay.booked)}, {overlay.booked_time}".rstrip(", ")
@@ -279,35 +360,44 @@ def parsed_item_to_task(item: dict, overlay: Overlay, course: str) -> Task:
         major_academic=overlay.major_academic,
         completed=overlay.completed,
         source_id=item["id"],
-        title=item["title"],
+        title=title,
         kind=item["kind"],
         block_hours=overlay.block_hours,
+        optional=overlay.optional,
+        buffer_days=overlay.buffer_days,
         needs_review=item["needs_review"],
     )
 
 
 def load_parsed_tasks(
-    name: str, course: str, overlays: dict[str, Overlay]
+    name: str, course: str, overlays: dict[str, Overlay], session_time: str = ""
 ) -> list[Task]:
     path = PARSED_DIR / f"{name}.json"
     if not path.exists():
         raise SystemExit(
             f"Missing {path} — run scripts/extract_syllabus.py {name} first."
         )
-    items = json.loads(path.read_text())["items"]
+    parsed = json.loads(path.read_text())
+    SEMESTERS[name] = (
+        date.fromisoformat(parsed["semester"]["start"]),
+        date.fromisoformat(parsed["semester"]["end"]),
+    )
+    items = parsed["items"]
     known = {item["id"] for item in items}
     for key in overlays:
         if key not in known:
             OVERLAY_WARNINGS.append(f"overlay id {key!r} not in {path.name}")
     tasks = []
     for item in items:
-        if item["kind"] == "break":
+        if item["kind"] in ("break", "session"):
             CONTEXT_NOTES.append(
                 ContextNote(
                     course,
+                    item["kind"],
                     item["title"],
                     date.fromisoformat(item["date_start"]),
                     date.fromisoformat(item["date_end"]),
+                    session_time if item["kind"] == "session" else "",
                 )
             )
             continue
@@ -316,69 +406,60 @@ def load_parsed_tasks(
     return tasks
 
 
+def load_personal_tasks() -> list[Task]:
+    """Confirmed tasks from the weekly personal task file (made by
+    import_personal_tasks.py). The task text is the user's own line,
+    unedited. Missing file: warn and run without them."""
+    path = PARSED_DIR / "personal.json"
+    if not path.exists():
+        print(
+            f"Note: no {path.name} yet — run scripts/import_personal_tasks.py. "
+            "Running without personal tasks from the file.",
+            file=sys.stderr,
+        )
+        return []
+    return [
+        Task(
+            item["source_line"],
+            due=date.fromisoformat(item["date"]) if item["date"] else None,
+            title=item["title"],
+        )
+        for item in json.loads(path.read_text())["items"]
+    ]
+
+
 def fmt_date(d: date) -> str:
     return d.strftime("%a %b %d").replace(" 0", " ")
 
 
 TASKS = [
-    # Coursework — Predictive comes from the parsed syllabus plus the
-    # overlay above; everything else is still hand-typed.
+    # Coursework — Predictive and Prescriptive come from their parsed
+    # syllabi plus the overlays above; everything else is still hand-typed.
     *load_parsed_tasks("predictive", "Predictive", PREDICTIVE_OVERLAY),
+    *load_parsed_tasks("prescriptive", "Prescriptive", PRESCRIPTIVE_OVERLAY),
+    *load_parsed_tasks(
+        "agentic", "Agentic AI", AGENTIC_OVERLAY, session_time=AGENTIC_CLASS_TIME
+    ),
+    # Not parsed: the date (Nov 30 or Dec 7) is assigned randomly and isn't
+    # known yet. Due on the earlier date until it is. Hidden until the
+    # user's own start date, Oct 13 (the day after the mini-project).
     Task(
-        "Agentic AI mini-project — ongoing work, presentation Oct 12. "
-        "Needs parallel time blocks for both continued building and "
-        "presentation prep/testing.",
-        due=date(2026, 10, 12),
+        "Agentic AI Final Presentation — date TBD: Nov 30 or Dec 7, team of "
+        "three (assigned Class 5), 40% of grade.",
+        due=date(2026, 11, 30),
+        start_after=date(2026, 10, 13),
+        hidden_until=date(2026, 10, 13),
         major_academic=True,
+        kind="deliverable",
+        title="Agentic AI Final Presentation",
     ),
+    # Personal — one-off tasks come from the weekly file
+    # (data/personal_tasks.txt, via import_personal_tasks.py). Moo and
+    # recurring tasks stay here: they need structured state a line can't
+    # carry.
+    *load_personal_tasks(),
     Task(
-        "Prescriptive midterm exam — Oct 3. 5 lectures + 2 HWs to review, "
-        "plus mock practice questions. I'm starting midterm prep on Tue "
-        "Sep 29 by my own choice, not today.",
-        due=date(2026, 10, 3),
-        start_after=date(2026, 9, 29),
-        major_academic=True,
-    ),
-    Task(
-        "Prescriptive HW2 (group) — due Sep 27. Assignment submissions "
-        "should be treated as needing ~2 days buffer before the actual "
-        "deadline.",
-        due=date(2026, 9, 27),
-        buffer_days=2,
-        completed=True,
-    ),
-    # Personal
-    # Eval case 2026-09-25: the compiled video posts Sep 30, a hard action
-    # date, so the compile needs a 2-day buffer before it.
-    Task(
-        "ANT series — compile full video (ep 1-12) by Sep 29.",
-        due=date(2026, 9, 29),
-        hard_date=date(2026, 9, 30),
-        buffer_days=2,
-        completed=True,
-    ),
-    Task(
-        "ANT series — episode 12, due Sep 29, needs CTA check.",
-        due=date(2026, 9, 29),
-    ),
-    Task(
-        "Post ANT episode 12 on three platforms on Tue Sep 29. The video is "
-        "finished and only posting remains. Posting takes about 5-10 "
-        "minutes per platform, 15-30 minutes total.",
-        due=date(2026, 9, 29),
-    ),
-    Task(
-        "Post the ANT compiled video on Sep 30. The video is finished and "
-        "only posting remains. Posting takes about 5-10 minutes per "
-        "platform, 15-30 minutes total.",
-        due=date(2026, 9, 30),
-    ),
-    Task(
-        "Moo series — change handle name and bio, by Sep 30.",
-        due=date(2026, 9, 30),
-    ),
-    Task(
-        "Moo series — episode 1 posts Thu Oct 1, then recurring every "
+        "Moo series — episode 1 posted Thu Oct 1, then recurring every "
         "Tue/Thu after. Episodes 1-4 fully complete (script, video, "
         "editing done). Episode 5: script and video generation done, "
         "roughly 2h of editing left.",
@@ -387,23 +468,6 @@ TASKS = [
     # Posting is split from production: one generated task for the next
     # Moo post, recomputed from TODAY on every run.
     Task("", posting=MOO_SERIES),
-    Task(
-        "Personal appointment — Oct 5 (Monday), 11am. One-off date, not "
-        "recurring (these happen roughly every 2 weeks but not on a fixed "
-        "day).",
-        due=date(2026, 10, 5),
-    ),
-    Task(
-        "Volunteering signup — Sep 26, 10-11:30am.",
-        due=date(2026, 9, 26),
-        completed=True,
-    ),
-    Task(
-        "Buy shoes — no fixed date, do on a weekend soon.",
-        weekend=True,
-        completed=True,
-    ),
-    Task("Grocery run — no fixed date, zero onions needed."),
     Task(
         "Talk to parents — recurring roughly every 3 days.",
         last_done=date(2026, 9, 27),
@@ -508,12 +572,23 @@ def before_start_after(task: Task) -> bool:
 
 
 def is_overdue(task: Task) -> bool:
-    return task.due is not None and task.due < TODAY and not task.completed
+    return (
+        task.due is not None
+        and task.due < TODAY
+        and not task.completed
+        and not task.optional
+    )
+
+
+def is_expired(task: Task) -> bool:
+    """An optional task whose date has passed: it just drops off."""
+    return task.optional and task.due is not None and task.due < TODAY
 
 
 def next_post(series: Series) -> tuple[int, date]:
-    """The series' next post on or after TODAY: (episode, date)."""
-    episode = 1
+    """The series' next post on or after TODAY that hasn't been posted
+    yet: (episode, date)."""
+    episode = series.episodes_posted + 1
     while series_post_date(series, episode) < TODAY:
         episode += 1
     return episode, series_post_date(series, episode)
@@ -561,7 +636,7 @@ def lecture_at_window_end(task: Task) -> bool:
 def check_in_fact(task: Task) -> str | None:
     """On a deliverable's check-in days, a fact asking the user to confirm
     status. A fact only — not a new work block."""
-    if task.kind != "deliverable" or task.due is None:
+    if task.kind != "deliverable" or task.due is None or task.optional:
         return None
     days = (task.due - TODAY).days
     if days not in CHECK_IN_DAYS_BEFORE:
@@ -614,12 +689,9 @@ def computed_facts(task: Task) -> list[str]:
         )
     if task.series:
         s = task.series
-        episode = 1
-        while series_post_date(s, episode) < TODAY:
-            episode += 1
+        episode, post = next_post(s)
         facts.append(
-            f"Next post in the series: episode {episode}, "
-            f"{describe_gap(series_post_date(s, episode))}."
+            f"Next post in the series: episode {episode}, {describe_gap(post)}."
         )
         next_unfinished = s.episodes_done + 1
         facts.append(
@@ -634,6 +706,11 @@ def computed_facts(task: Task) -> list[str]:
     check_in = check_in_fact(task)
     if check_in:
         facts.append(check_in)
+    if task.optional:
+        facts.append(
+            "OPTIONAL: extra credit with no real deadline behind it — never "
+            "put this in must_do; can_do at most."
+        )
     if task.kind == "lecture":
         facts.append(
             "NOT SPLITTABLE: a lecture is studied in one continuous block; "
@@ -684,9 +761,15 @@ something is unknown, either leave it out or say plainly that it's unknown.
 You will be given: today's date, a daily time budget in hours, and the \
 person's full raw task list (unedited descriptions — infer effort, urgency, \
 and pacing yourself; nothing has been pre-scored for you). You may also get \
-"Calendar context" lines (e.g. a break with no classes). These are not \
-tasks: use them for pacing, but never list them in must_do, can_do or \
-upcoming.
+"Calendar context" lines (e.g. a break with no classes, or an upcoming live \
+class session). These are not tasks: use them for pacing, but never list \
+them in must_do, can_do or upcoming.
+
+FIXED COMMITMENTS: you may get "Fixed commitments today" (e.g. a live \
+class). Code has already placed them in must_do with their hours, and they \
+count against the budget. They are not weighed against other tasks — do not \
+list them yourself; plan the rest of must_do within the remaining budget \
+given.
 
 Some tasks come with "Computed facts" lines: day counts, buffer targets, and \
 next-occurrence dates for recurring series, calculated in code from today's \
@@ -705,6 +788,9 @@ defer it on the grounds that it's small, quick, or low-effort per unit.
 END-OF-WINDOW RULE — same force as the buffer rule: a lecture whose computed \
 facts say END OF WINDOW must be in must_do today, regardless of your own \
 priority reasoning.
+
+OPTIONAL RULE: a task marked OPTIONAL is never put in must_do, however \
+close its date is. At most it goes in can_do.
 
 LECTURE BLOCK RULE: a lecture marked NOT SPLITTABLE is studied in one \
 continuous block, unlike splittable work such as series editing. Whenever a \
@@ -740,26 +826,48 @@ is a stated plan — respect it and don't schedule the task before that date.
 Return ONLY a JSON object (no markdown fences, no commentary) with this shape:
 {
   "must_do": [
-    {"id": <the task's number from the input list>, "task": "<short task \
-name, matching the input>", "hours_today": \
+    {"id": <the task's number from the input list>, "title": "<the task's \
+[title: ...] copied exactly>", "task": "<short task name, matching the \
+input>", "hours_today": \
 <number: your honest estimate of hours this task needs TODAY — today's slice \
-only, not the whole task>, "reasoning": "<one fresh sentence: why this, why \
-today, referencing the actual date/effort/stakes involved>"}
+only, not the whole task>, "claims": [<claims: why this, why today, \
+referencing the actual date/effort/stakes involved>]}
   ],
   "can_do": [
-    {"id": <task number>, "task": "<short task name>", "hours_today": \
-<number: honest estimate of the hours today's slice would take if it were \
-done today>, "reasoning": "<one sentence on why it is \
-genuinely fine to wait today — cite its actual deadline, remaining effort, \
-and roughly when it will need to start. Same rigor as a must_do reason; not \
-a generic 'not urgent'>"}
+    {"id": <task number>, "title": "<[title: ...] copied exactly>", "task": \
+"<short task name>", "hours_today": <number: honest estimate of the hours \
+today's slice would take if it were done today>, "claims": [<claims: why it is genuinely fine to wait today — \
+its actual deadline, remaining effort, and roughly when it will need to \
+start. Same rigor as a must_do reason; not a generic 'not urgent'>]}
   ],
   "upcoming": [
-    {"id": <task number>, "task": "<short task name>", "when": "<date/time \
+    {"id": <task number>, "title": "<[title: ...] copied exactly>", "task": \
+"<short task name>", "when": "<date/time \
 as given in the task \
-list>", "reasoning": "<one sentence: why no action is needed today>"}
+list>", "claims": [<claims: why no action is needed today>]}
   ]
 }
+
+CLAIMS — each item's reasoning is a short list of claims (usually 1-3). \
+Code joins their "text" fields into the sentence the person reads, so write \
+each text as a short sentence that reads naturally in sequence. Each claim \
+is one of:
+- {"type": "fact", "text": "...", "quote": "<words copied exactly from the \
+source>", "source_id": <optional>} — anything stated as true about a task \
+(its stakes, what's done or not, effort given in the text, a plan the \
+person stated, a computed-facts tag like MAJOR ACADEMIC or END OF WINDOW). \
+"quote" must be copied character for character from the source: the task's \
+own line or its "Computed facts:" line. source_id defaults to the item's own \
+task number; if the fact is about ANOTHER task, set source_id to that \
+task's number and quote its text; if it comes from the "Calendar context" \
+or "Fixed commitments today" lines, set source_id to "context".
+- {"type": "date", "text": "..."} — pure date math (a day count, a weekday, \
+a window) taken from the computed facts. No quote.
+- {"type": "judgment", "text": "..."} — your own assessment (e.g. it fits \
+the remaining budget, front-loading is safer). No quote.
+Code checks every fact's quote against its source. Never label a fact as \
+"judgment" or "date" to avoid that check; if you can't quote a source for a \
+fact, don't state it.
 
 Categories:
 - must_do: SHORT — only what's genuinely needed today to stay on track \
@@ -780,12 +888,16 @@ Estimate hours_today honestly. Do not shrink estimates to make must_do fit \
 the daily budget — if the must_do list genuinely needs more than the budget, \
 the total should show that.
 
+Each task line starts with its number and "[title: ...]". In every item, \
+"id" is that number and "title" is the text inside [title: ...], copied \
+character for character — code checks both against the input.
+
 Every task number in the input must appear exactly once across the three \
 lists — never zero times, never twice. A task is one unit: do not split it \
 into parts or list it in two categories, even when it has several aspects \
 (e.g. a recurring series with a finished upcoming post AND unfinished future \
 work). Pick the single category for the aspect that needs attention soonest \
-and mention the other aspect in that item's reasoning."""
+and mention the other aspect in that item's claims."""
 
 
 def relevant_date(task: Task) -> date | None:
@@ -812,7 +924,9 @@ def relevant_date(task: Task) -> date | None:
 
 def within_horizon(task: Task) -> bool:
     """Tasks with no date at all can't be judged by the horizon, so they
-    are always shown."""
+    are always shown (unless hidden_until says otherwise)."""
+    if task.hidden_until and TODAY < task.hidden_until:
+        return False
     rel = relevant_date(task)
     return rel is None or (rel - TODAY).days <= HORIZON_DAYS
 
@@ -825,7 +939,10 @@ def active_tasks() -> dict[int, Task]:
     return {
         i + 1: task
         for i, task in enumerate(TASKS)
-        if not task.completed and not is_overdue(task) and within_horizon(task)
+        if not task.completed
+        and not is_overdue(task)
+        and not is_expired(task)
+        and within_horizon(task)
     }
 
 
@@ -834,7 +951,10 @@ def hidden_tasks() -> list[Task]:
     hidden = [
         task
         for task in TASKS
-        if not task.completed and not is_overdue(task) and not within_horizon(task)
+        if not task.completed
+        and not is_overdue(task)
+        and not is_expired(task)
+        and not within_horizon(task)
     ]
     return sorted(hidden, key=relevant_date)
 
@@ -849,27 +969,100 @@ def overdue_tasks() -> list[Task]:
     return [task for task in TASKS if is_overdue(task)]
 
 
+def agentic_class_today() -> bool:
+    """Mondays within the Agentic AI semester, except its break days."""
+    start, end = SEMESTERS["agentic"]
+    on_break = any(
+        note.course == "Agentic AI"
+        and note.kind == "break"
+        and note.start <= TODAY <= note.end
+        for note in CONTEXT_NOTES
+    )
+    return TODAY.weekday() == MON and start <= TODAY <= end and not on_break
+
+
+def fixed_commitments() -> list[dict]:
+    """Must-Do items placed by code, not ranked by the model: always in
+    Must-Do on their day, and counted against the budget like any other
+    Must-Do item."""
+    if not agentic_class_today():
+        return []
+    return [
+        {
+            "id": None,
+            "fixed": True,
+            "task": AGENTIC_CLASS,
+            "hours_today": AGENTIC_CLASS_HOURS,
+            "reasoning": "Scheduled weekly class — a fixed commitment, not "
+            "weighed against other tasks.",
+        }
+    ]
+
+
+def with_fixed(result: dict) -> dict:
+    """Put today's fixed commitments at the top of the model's Must-Do."""
+    model_must_do = [i for i in result.get("must_do", []) if not i.get("fixed")]
+    result["must_do"] = fixed_commitments() + model_must_do
+    return result
+
+
+def context_lines() -> list[str]:
+    """Breaks until they're over; class sessions only within the horizon."""
+    lines = []
+    for note in CONTEXT_NOTES:
+        when = describe_gap(note.start).split("(", 1)[1].rstrip(")")
+        if note.kind == "session":
+            if 0 <= (note.start - TODAY).days <= HORIZON_DAYS:
+                time = f", {note.time}" if note.time else ""
+                lines.append(
+                    f"- {note.course}: class session {fmt_date(note.start)}"
+                    f"{time} ({note.title}). Starts {when}."
+                )
+        elif note.end >= TODAY:
+            span = (
+                f"on {fmt_date(note.start)}"
+                if note.start == note.end
+                else f"{fmt_date(note.start)} through {fmt_date(note.end)}"
+            )
+            lines.append(
+                f"- {note.course}: no classes {span} "
+                f"({note.title.strip(' !')}). Starts {when}."
+            )
+    return lines
+
+
 def build_user_message() -> str:
     lines = []
     for task_id, task in active_tasks().items():
-        lines.append(f"{task_id}. {describe(task)}")
+        lines.append(f"{task_id}. [title: {short_title(task)}] {describe(task)}")
         facts = computed_facts(task)
         if facts:
             lines.append(f"   Computed facts: {' '.join(facts)}")
     task_list = "\n".join(lines)
-    message = (
+    return (
         f"Today's date: {TODAY.strftime('%A, %B %d, %Y')}\n"
         f"Daily time budget: {DAILY_BUDGET_HOURS} hours\n\n"
         f"Full active task list:\n{task_list}"
-    )
-    notes = [note for note in CONTEXT_NOTES if note.end >= TODAY]
-    if notes:
-        message += "\n\nCalendar context (not tasks):\n" + "\n".join(
-            f"- {note.course}: no classes {fmt_date(note.start)} through "
-            f"{fmt_date(note.end)} ({note.title.strip(' !')}). Starts "
-            f"{describe_gap(note.start).split('(', 1)[1].rstrip(')')}."
-            for note in notes
+    ) + context_block()
+
+
+def context_block() -> str:
+    """The fixed-commitment and calendar-context part of the prompt.
+    Claims quote it with source_id "context"."""
+    message = ""
+    fixed = fixed_commitments()
+    if fixed:
+        fixed_hours = sum(item["hours_today"] for item in fixed)
+        message += (
+            "\n\nFixed commitments today (already placed in must_do by code "
+            "— do not list them):\n"
+            + "\n".join(f"- {i['task']}: {i['hours_today']:g}h" for i in fixed)
+            + f"\nThat leaves {DAILY_BUDGET_HOURS - fixed_hours:g}h of the "
+            f"{DAILY_BUDGET_HOURS}h budget for everything else."
         )
+    lines = context_lines()
+    if lines:
+        message += "\n\nCalendar context (not tasks):\n" + "\n".join(lines)
     return message
 
 
@@ -892,7 +1085,32 @@ def parse_json_response(text: str) -> dict:
     return json.loads(text)
 
 
-def get_judgment(messages: list[dict]) -> tuple[dict, str]:
+# Estimated dollar cost of each model call this run, for the run total.
+CALL_COSTS: list[float] = []
+
+
+def log_usage(label: str, usage) -> None:
+    """Print one call's tokens and estimated cost, and record the cost."""
+    cost = (
+        usage.input_tokens * INPUT_PRICE_PER_MTOK
+        + usage.output_tokens * OUTPUT_PRICE_PER_MTOK
+    ) / 1_000_000
+    CALL_COSTS.append(cost)
+    print(
+        f"[{label}] input {usage.input_tokens:,} tokens, output "
+        f"{usage.output_tokens:,} tokens, est. ${cost:.4f}"
+    )
+
+
+def print_cost_total() -> None:
+    calls = len(CALL_COSTS)
+    print(
+        f"\nAPI cost this run: est. ${sum(CALL_COSTS):.4f} "
+        f"({calls} call{'s' if calls != 1 else ''})"
+    )
+
+
+def get_judgment(messages: list[dict], label: str) -> tuple[dict, str]:
     """Returns the parsed judgment and the raw response text (needed to
     continue the conversation for a correction pass)."""
     client = anthropic.Anthropic()
@@ -912,6 +1130,9 @@ def get_judgment(messages: list[dict]) -> tuple[dict, str]:
         )
     except anthropic.APIConnectionError:
         raise SystemExit("Network error reaching the Anthropic API.")
+
+    # Logged before any exit below: a refused or unparseable call still costs.
+    log_usage(label, response.usage)
 
     if response.stop_reason == "refusal":
         raise SystemExit(f"Model declined to respond: {response.stop_details}")
@@ -964,6 +1185,10 @@ def displacement_problems(result: dict) -> list[str]:
 def over_budget(result: dict) -> float:
     """Hours by which Must-Do exceeds the daily budget (0 if it fits)."""
     return max(0.0, round(must_do_hours(result) - DAILY_BUDGET_HOURS, 2))
+
+
+def item_label(item: dict) -> str:
+    return "fixed, placed by code" if item.get("fixed") else f"task {item['id']}"
 
 
 def correction_message(result: dict) -> str:
@@ -1022,10 +1247,22 @@ def correction_message(result: dict) -> str:
             "must_do/can_do whole (unless it is END OF WINDOW)."
         )
 
+    optional = optional_in_must_do(result)
+    if optional:
+        names = "\n".join(
+            f"  - task {task_id} ({short_title(task)})"
+            for task_id, task in optional
+        )
+        parts.append(
+            "- These tasks are OPTIONAL (no real deadline) but are in "
+            f"must_do:\n{names}\n"
+            "  Move each out of must_do (to can_do at most)."
+        )
+
     overage = over_budget(result)
     if overage:
         items = "\n".join(
-            f"  - task {item['id']} ({item['task']}): {item['hours_today']:g}h"
+            f"  - {item_label(item)} ({item['task']}): {item['hours_today']:g}h"
             for item in result.get("must_do", [])
         )
         parts.append(
@@ -1035,7 +1272,8 @@ def correction_message(result: dict) -> str:
             f"{DAILY_BUDGET_HOURS}h. Every existing rule still applies: the "
             "coursework-first rule, hard finish-by dates (buffer targets, "
             "series finish dates, and lectures marked END OF WINDOW), and "
-            "posts or appointments happening today stay in must_do. You "
+            "posts or appointments happening today stay in must_do. Fixed "
+            "commitments placed by code are already counted and can't move. You "
             "choose what moves out of must_do, and you may shrink hours_today "
             "for work that can be split (never a lecture marked NOT "
             "SPLITTABLE — it stays whole or moves out whole, unless it is END "
@@ -1044,9 +1282,34 @@ def correction_message(result: dict) -> str:
             "personal tasks first, reduce coursework (MAJOR ACADEMIC) last, "
             "and never move a post or appointment happening today. If the day "
             "can't fit without breaking one of those rules, keep the rule, "
-            "say so in the reasoning of the affected items, and leave the "
+            "say so in the claims of the affected items, and leave the "
             "total over budget — don't hide the overage with estimates "
             "smaller than honest."
+        )
+
+    integrity = id_integrity_problems(result)
+    if integrity:
+        names = "\n".join(f"  - {problem}" for problem in integrity)
+        parts.append(
+            "- These items don't match a task in the input:\n"
+            f"{names}\n"
+            "  Every item must use a task number from the input and copy its "
+            "[title: ...] exactly. Drop any item that isn't an input task."
+        )
+
+    ungrounded = ungrounded_claims(result)
+    if ungrounded:
+        names = "\n".join(
+            f"  - task {item['id']} ({item.get('task')}): {reason}"
+            for _, item, reason in ungrounded
+        )
+        parts.append(
+            "- These claims aren't grounded in the input:\n"
+            f"{names}\n"
+            "  For each: replace the quote with words copied exactly from the "
+            "source text, cite the right source_id (another task's number, or "
+            '"context"), or drop the claim. Don\'t relabel a fact as judgment '
+            "or date to get past this check."
         )
 
     parts.append(
@@ -1061,6 +1324,8 @@ def coverage_problems(result: dict) -> list[str]:
     seen: dict[int, list[str]] = {}
     for category in ("must_do", "can_do", "upcoming"):
         for item in result.get(category, []):
+            if item.get("fixed"):
+                continue
             seen.setdefault(item.get("id"), []).append(category)
     problems = []
     for task_id in active_tasks():
@@ -1074,6 +1339,113 @@ def coverage_problems(result: dict) -> list[str]:
             )
     for task_id in seen:
         problems.append(f"unknown task id {task_id} in output")
+    return problems
+
+
+def normalize(text: str) -> str:
+    """For quote matching: whitespace collapsed, case ignored."""
+    return re.sub(r"\s+", " ", text).strip().casefold()
+
+
+def task_source_text(task: Task) -> str:
+    """A task's quotable text, exactly as sent: its line plus its
+    "Computed facts:" line (decision 1: computed facts can be quoted)."""
+    facts = computed_facts(task)
+    text = describe(task)
+    if facts:
+        text += f" Computed facts: {' '.join(facts)}"
+    return normalize(text)
+
+
+def build_reasoning(result: dict) -> dict:
+    """The displayed reasoning is built in code from the claim texts."""
+    for category in ("must_do", "can_do", "upcoming"):
+        for item in result.get(category, []):
+            if item.get("fixed"):
+                continue
+            claims = item.get("claims") or []
+            texts = (c.get("text", "").strip() for c in claims if isinstance(c, dict))
+            item["reasoning"] = " ".join(as_sentence(t) for t in texts if t)
+    return result
+
+
+def as_sentence(text: str) -> str:
+    """Capitalized, ending in punctuation, so joined claims read as
+    separate sentences."""
+    text = text[0].upper() + text[1:]
+    return text if text[-1] in ".!?" else text + "."
+
+
+def ungrounded_claims(result: dict) -> list[tuple[str, dict, str]]:
+    """Part 2 of the no-invented-tasks check: (category, item, reason)
+    for every claim that isn't grounded. Exists-check only — the quote
+    must appear in its source text; whether it actually supports the
+    claim isn't checked (see Known Issues in CLAUDE.md)."""
+    tasks = active_tasks()
+    context = normalize(context_block())
+    found = []
+    for category in ("must_do", "can_do", "upcoming"):
+        for item in result.get(category, []):
+            if item.get("fixed") or item.get("id") not in tasks:
+                continue  # fixed: placed by code; unknown id: Part 1's job
+            claims = item.get("claims")
+            if not claims:
+                found.append((category, item, "no claims given"))
+                continue
+            for claim in claims:
+                kind = claim.get("type") if isinstance(claim, dict) else None
+                if kind in ("date", "judgment"):
+                    continue
+                if kind != "fact":
+                    found.append((category, item, f"claim has unknown type {kind!r}"))
+                    continue
+                text = claim.get("text", "")
+                quote = normalize(claim.get("quote") or "")
+                if not quote:
+                    found.append((category, item, f"fact {text!r} has no quote"))
+                    continue
+                source = claim.get("source_id", item["id"])
+                if source == "context":
+                    source_text, name = context, "the calendar context"
+                elif source in tasks:
+                    source_text = task_source_text(tasks[source])
+                    name = f"task {source}"
+                else:
+                    found.append(
+                        (category, item, f"fact {text!r} cites unknown source_id "
+                         f"{source!r}")
+                    )
+                    continue
+                if quote not in source_text:
+                    found.append(
+                        (category, item, f"fact {text!r}: quote "
+                         f"{claim.get('quote')!r} is not in {name}'s text")
+                    )
+    return found
+
+
+def id_integrity_problems(result: dict) -> list[str]:
+    """Part 1 of the no-invented-tasks check: every scheduled item (not
+    a code-placed fixed commitment) names a real active task — its id
+    exists and its copied title matches that task's title exactly."""
+    tasks = active_tasks()
+    problems = []
+    for category in ("must_do", "can_do", "upcoming"):
+        for item in result.get(category, []):
+            if item.get("fixed"):
+                continue
+            task = tasks.get(item.get("id"))
+            if task is None:
+                problems.append(
+                    f"{category} item {item.get('task')!r} has id "
+                    f"{item.get('id')!r}, which is not a task in the input"
+                )
+            elif item.get("title") != short_title(task):
+                problems.append(
+                    f"task {item['id']} in {category}: title "
+                    f"{item.get('title')!r} doesn't match the input title "
+                    f"{short_title(task)!r}"
+                )
     return problems
 
 
@@ -1104,6 +1476,15 @@ def lecture_block_mismatches(result: dict) -> list[tuple[int, Task, float, str]]
             ):
                 found.append((item["id"], task, item["hours_today"], category))
     return found
+
+
+def optional_in_must_do(result: dict) -> list[tuple[int, Task]]:
+    tasks = active_tasks()
+    return [
+        (item["id"], tasks[item["id"]])
+        for item in result.get("must_do", [])
+        if item.get("id") in tasks and tasks[item["id"]].optional
+    ]
 
 
 def print_check_failures(result: dict) -> None:
@@ -1146,6 +1527,24 @@ def print_check_failures(result: dict) -> None:
                 f"{category}, block is exactly {task.block_hours:g}h"
             )
 
+    integrity = id_integrity_problems(result)
+    if integrity:
+        print("\n⚠ OUTPUT CHECK FAILED: item doesn't match an input task")
+        for problem in integrity:
+            print(f"  - {problem}")
+
+    ungrounded = ungrounded_claims(result)
+    if ungrounded:
+        print("\n⚠ OUTPUT CHECK FAILED: claim not grounded in the input")
+        for category, item, reason in ungrounded:
+            print(f"  - task {item['id']} in {category}: {reason}")
+
+    optional = optional_in_must_do(result)
+    if optional:
+        print("\n⚠ OUTPUT CHECK FAILED: optional task in Must-Do")
+        for task_id, task in optional:
+            print(f"  - task {task_id} ({short_title(task)})")
+
 
 def print_judgment(result: dict, first_pass: dict | None = None) -> None:
     print(
@@ -1179,10 +1578,19 @@ def print_judgment(result: dict, first_pass: dict | None = None) -> None:
     must_do = result.get("must_do", [])
     total_hours = must_do_hours(result)
 
+    flags: dict[int, list[str]] = {}
+    for _, item, reason in ungrounded_claims(result):
+        flags.setdefault(id(item), []).append(reason)
+
+    def print_reasoning(item: dict) -> None:
+        print(f"    {item['reasoning']}")
+        for reason in flags.get(id(item), []):
+            print(f"    ⚠ UNGROUNDED: {reason}")
+
     print("=== MUST-DO ===")
     for item in must_do:
         print(f"- {item['task']} (~{item['hours_today']}h)")
-        print(f"    {item['reasoning']}")
+        print_reasoning(item)
     print(f"  Total: {round(total_hours, 2):g}h of {DAILY_BUDGET_HOURS}h budget")
     if total_hours > DAILY_BUDGET_HOURS:
         print(
@@ -1193,12 +1601,12 @@ def print_judgment(result: dict, first_pass: dict | None = None) -> None:
     print("\n=== CAN-DO (reward tier — after Must-Do is done) ===")
     for item in result.get("can_do", []):
         print(f"- {item['task']} (~{item.get('hours_today', '?')}h)")
-        print(f"    {item['reasoning']}")
+        print_reasoning(item)
 
     print("\n=== UPCOMING (no action needed today) ===")
     for item in result.get("upcoming", []):
         print(f"- {item['task']} — {item['when']}")
-        print(f"    {item['reasoning']}")
+        print_reasoning(item)
 
     print_check_failures(result)
 
@@ -1218,7 +1626,22 @@ def main() -> None:
         raise SystemExit("Missing ANTHROPIC_API_KEY in .env")
 
     first_pass, result = judge()
+    print()
     print_judgment(result, first_pass)
+    print_cost_total()
+
+
+def needs_retry(result: dict) -> bool:
+    """Any check that joins the shared single retry failed."""
+    return bool(
+        displaced_coursework(result)
+        or over_budget(result)
+        or lectures_missing_at_window_end(result)
+        or lecture_block_mismatches(result)
+        or optional_in_must_do(result)
+        or id_integrity_problems(result)
+        or ungrounded_claims(result)
+    )
 
 
 def judge() -> tuple[dict | None, dict]:
@@ -1231,21 +1654,17 @@ def judge() -> tuple[dict | None, dict]:
     checked again, but never retried a second time — any remaining
     failure is printed as a warning instead."""
     messages = [{"role": "user", "content": build_user_message()}]
-    result, text = get_judgment(messages)
-    if (
-        not displaced_coursework(result)
-        and not over_budget(result)
-        and not lectures_missing_at_window_end(result)
-        and not lecture_block_mismatches(result)
-    ):
+    result, text = get_judgment(messages, "first pass")
+    result = with_fixed(build_reasoning(result))
+    if not needs_retry(result):
         return None, result
 
     messages += [
         {"role": "assistant", "content": text},
         {"role": "user", "content": correction_message(result)},
     ]
-    final, _ = get_judgment(messages)
-    return result, final
+    final, _ = get_judgment(messages, "retry")
+    return result, with_fixed(build_reasoning(final))
 
 
 if __name__ == "__main__":
