@@ -1,0 +1,234 @@
+{
+  "note": "FAKE sample data, written by hand for sample mode (python3 scripts/judgment_core.py --sample). Not a real course, not extracted from any PDF.",
+  "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+  "source_pdf": null,
+  "extracted_with": "hand-written sample (no model call)",
+  "extracted_on": null,
+  "semester": {
+    "start": "2027-01-18",
+    "end": "2027-05-07"
+  },
+  "schedule_text": "WEEK TOPIC/LECTURE ASSIGNMENTS DUE DATE\n1: Jan 18 – Jan 24 Lecture 1: Course Overview\n2: Jan 25 – Jan 31 Lecture 2: Describing Data\n3: Feb 1 – Feb 7 Lecture 3: Sampling HW 1 due Feb 6\n4: Feb 8 – Feb 14 Lecture 4: Estimation\n5: Feb 15 – Feb 21 Lecture 5: Hypothesis Tests HW 2 due Feb 20\n6: Feb 22 – Feb 28 Lecture 6: Simple Regression\n7: Mar 1 – Mar 7 Lecture 7: Multiple Regression\n8: Mar 8 – Mar 14 Lecture 8: Forecasting Basics HW 3 due Mar 13\n9: Mar 15 – Mar 21 Lecture 9: Classification Exam 1 Mar 17; Extra Credit HW due Mar 19; Project Proposal due Mar 20\n10: Mar 22 – Mar 28 Spring Break – no classes\n11: Mar 29 – Apr 4 Lecture 10: Clustering HW 4 due Apr 2\nExam 2 Apr 21\nFinal Project Report May 5",
+  "items": [
+    {
+      "id": "samp-lecture-1",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "lecture",
+      "title": "Lecture 1: Course Overview",
+      "date_start": "2027-01-18",
+      "date_end": "2027-01-24",
+      "source_text": "1: Jan 18 – Jan 24 Lecture 1: Course Overview",
+      "needs_review": false,
+      "review_reasons": []
+    },
+    {
+      "id": "samp-lecture-2",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "lecture",
+      "title": "Lecture 2: Describing Data",
+      "date_start": "2027-01-25",
+      "date_end": "2027-01-31",
+      "source_text": "2: Jan 25 – Jan 31 Lecture 2: Describing Data",
+      "needs_review": false,
+      "review_reasons": []
+    },
+    {
+      "id": "samp-lecture-3",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "lecture",
+      "title": "Lecture 3: Sampling",
+      "date_start": "2027-02-01",
+      "date_end": "2027-02-07",
+      "source_text": "3: Feb 1 – Feb 7 Lecture 3: Sampling HW 1 due Feb 6",
+      "needs_review": false,
+      "review_reasons": []
+    },
+    {
+      "id": "samp-deliverable-hw-1",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "deliverable",
+      "title": "HW 1",
+      "date_start": "2027-02-06",
+      "date_end": "2027-02-06",
+      "source_text": "3: Feb 1 – Feb 7 Lecture 3: Sampling HW 1 due Feb 6",
+      "needs_review": false,
+      "review_reasons": []
+    },
+    {
+      "id": "samp-lecture-4",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "lecture",
+      "title": "Lecture 4: Estimation",
+      "date_start": "2027-02-08",
+      "date_end": "2027-02-14",
+      "source_text": "4: Feb 8 – Feb 14 Lecture 4: Estimation",
+      "needs_review": false,
+      "review_reasons": []
+    },
+    {
+      "id": "samp-lecture-5",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "lecture",
+      "title": "Lecture 5: Hypothesis Tests",
+      "date_start": "2027-02-15",
+      "date_end": "2027-02-21",
+      "source_text": "5: Feb 15 – Feb 21 Lecture 5: Hypothesis Tests HW 2 due Feb 20",
+      "needs_review": false,
+      "review_reasons": []
+    },
+    {
+      "id": "samp-deliverable-hw-2",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "deliverable",
+      "title": "HW 2",
+      "date_start": "2027-02-20",
+      "date_end": "2027-02-20",
+      "source_text": "5: Feb 15 – Feb 21 Lecture 5: Hypothesis Tests HW 2 due Feb 20",
+      "needs_review": false,
+      "review_reasons": []
+    },
+    {
+      "id": "samp-lecture-6",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "lecture",
+      "title": "Lecture 6: Simple Regression",
+      "date_start": "2027-02-22",
+      "date_end": "2027-02-28",
+      "source_text": "6: Feb 22 – Feb 28 Lecture 6: Simple Regression",
+      "needs_review": false,
+      "review_reasons": []
+    },
+    {
+      "id": "samp-lecture-7",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "lecture",
+      "title": "Lecture 7: Multiple Regression",
+      "date_start": "2027-03-01",
+      "date_end": "2027-03-07",
+      "source_text": "7: Mar 1 – Mar 7 Lecture 7: Multiple Regression",
+      "needs_review": false,
+      "review_reasons": []
+    },
+    {
+      "id": "samp-lecture-8",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "lecture",
+      "title": "Lecture 8: Forecasting Basics",
+      "date_start": "2027-03-08",
+      "date_end": "2027-03-14",
+      "source_text": "8: Mar 8 – Mar 14 Lecture 8: Forecasting Basics HW 3 due Mar 13",
+      "needs_review": false,
+      "review_reasons": []
+    },
+    {
+      "id": "samp-deliverable-hw-3",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "deliverable",
+      "title": "HW 3",
+      "date_start": "2027-03-13",
+      "date_end": "2027-03-13",
+      "source_text": "8: Mar 8 – Mar 14 Lecture 8: Forecasting Basics HW 3 due Mar 13",
+      "needs_review": false,
+      "review_reasons": []
+    },
+    {
+      "id": "samp-lecture-9",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "lecture",
+      "title": "Lecture 9: Classification",
+      "date_start": "2027-03-15",
+      "date_end": "2027-03-21",
+      "source_text": "9: Mar 15 – Mar 21 Lecture 9: Classification Exam 1 Mar 17; Extra Credit HW due Mar 19; Project Proposal due Mar 20",
+      "needs_review": false,
+      "review_reasons": []
+    },
+    {
+      "id": "samp-exam-1",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "exam",
+      "title": "Exam 1",
+      "date_start": "2027-03-17",
+      "date_end": "2027-03-17",
+      "source_text": "9: Mar 15 – Mar 21 Lecture 9: Classification Exam 1 Mar 17; Extra Credit HW due Mar 19; Project Proposal due Mar 20",
+      "needs_review": false,
+      "review_reasons": []
+    },
+    {
+      "id": "samp-deliverable-extra-credit-hw",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "deliverable",
+      "title": "Extra Credit HW",
+      "date_start": "2027-03-19",
+      "date_end": "2027-03-19",
+      "source_text": "9: Mar 15 – Mar 21 Lecture 9: Classification Exam 1 Mar 17; Extra Credit HW due Mar 19; Project Proposal due Mar 20",
+      "needs_review": false,
+      "review_reasons": []
+    },
+    {
+      "id": "samp-deliverable-project-proposal",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "deliverable",
+      "title": "Project Proposal",
+      "date_start": "2027-03-20",
+      "date_end": "2027-03-20",
+      "source_text": "9: Mar 15 – Mar 21 Lecture 9: Classification Exam 1 Mar 17; Extra Credit HW due Mar 19; Project Proposal due Mar 20",
+      "needs_review": false,
+      "review_reasons": []
+    },
+    {
+      "id": "samp-break-spring-break",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "break",
+      "title": "Spring Break",
+      "date_start": "2027-03-22",
+      "date_end": "2027-03-28",
+      "source_text": "10: Mar 22 – Mar 28 Spring Break – no classes",
+      "needs_review": false,
+      "review_reasons": []
+    },
+    {
+      "id": "samp-lecture-10",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "lecture",
+      "title": "Lecture 10: Clustering",
+      "date_start": "2027-03-29",
+      "date_end": "2027-04-04",
+      "source_text": "11: Mar 29 – Apr 4 Lecture 10: Clustering HW 4 due Apr 2",
+      "needs_review": false,
+      "review_reasons": []
+    },
+    {
+      "id": "samp-deliverable-hw-4",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "deliverable",
+      "title": "HW 4",
+      "date_start": "2027-04-02",
+      "date_end": "2027-04-02",
+      "source_text": "11: Mar 29 – Apr 4 Lecture 10: Clustering HW 4 due Apr 2",
+      "needs_review": false,
+      "review_reasons": []
+    },
+    {
+      "id": "samp-exam-2",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "exam",
+      "title": "Exam 2",
+      "date_start": "2027-04-21",
+      "date_end": "2027-04-21",
+      "source_text": "Exam 2 Apr 21",
+      "needs_review": false,
+      "review_reasons": []
+    },
+    {
+      "id": "samp-deliverable-final-project-report",
+      "course": "SAMPLE 101 Intro to Sample Studies (FAKE)",
+      "kind": "deliverable",
+      "title": "Final Project Report",
+      "date_start": "2027-05-05",
+      "date_end": "2027-05-05",
+      "source_text": "Final Project Report May 5",
+      "needs_review": false,
+      "review_reasons": []
+    }
+  ]
+}

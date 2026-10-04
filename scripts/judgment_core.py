@@ -18,7 +18,13 @@ the user's own facts in each course's overlay; all other tasks (and the
 Agentic AI Final Presentation, whose date isn't known yet) are
 hand-typed. The Monday Agentic AI class is a fixed commitment added to
 Must-Do in code, not ranked by the model.
-Prints to stdout only; nothing is saved or sent to Telegram."""
+Prints to stdout only; nothing is saved or sent to Telegram.
+
+Sample mode (--sample) runs the same prompt, rules and checks on the fake
+course and fake personal tasks in sample/parsed/, with today pinned to
+SAMPLE_TODAY and none of the hand-typed tasks or the Monday class.
+
+Usage: python3 scripts/judgment_core.py [--sample]"""
 
 from __future__ import annotations
 
@@ -60,6 +66,14 @@ LECTURE_END_BUFFER_DAYS = 2
 # by hand 2026-09-25) until syllabus parsing and a real to-do source are
 # wired in, so it will drift out of date as tasks get done.
 TODAY = date.today()
+
+# Sample mode: fake data from sample/parsed/ instead of data/parsed/, and a
+# pinned "today" so the fake dates never go stale. Read from the command
+# line here because TODAY and TASKS are set at import time.
+SAMPLE = "--sample" in sys.argv[1:]
+SAMPLE_TODAY = date(2027, 3, 10)
+if SAMPLE:
+    TODAY = SAMPLE_TODAY
 
 MON, TUE, THU, SAT = 0, 1, 3, 5  # date.weekday() values
 
@@ -187,7 +201,11 @@ class Task:
 
 # --- Parsed syllabus items -------------------------------------------------
 
-PARSED_DIR = Path(__file__).resolve().parent.parent / "data" / "parsed"
+PARSED_DIR = (
+    Path(__file__).resolve().parent.parent
+    / ("sample" if SAMPLE else "data")
+    / "parsed"
+)
 
 
 @dataclass
@@ -299,6 +317,36 @@ PRESCRIPTIVE_OVERLAY = {
         f"pres-lecture-week-{n}": Overlay(block_hours=3)
         for n in (7, 8, 9, 10, 12, 13, 15)
     },
+}
+
+# FAKE — sample mode only. Made-up facts for the made-up course in
+# sample/parsed/sample_course.json, merged the same way as a real overlay.
+SAMPLE_OVERLAY = {
+    **{f"samp-lecture-{n}": Overlay(completed=True) for n in range(1, 7)},
+    **{
+        f"samp-lecture-{n}": Overlay(text=LECTURE_STUDY, block_hours=3)
+        for n in range(7, 11)
+    },
+    "samp-deliverable-hw-1": Overlay(completed=True),
+    "samp-deliverable-hw-2": Overlay(completed=True),
+    "samp-deliverable-hw-3": Overlay(
+        text="Problem set, about 2h. Not started.", buffer_days=2
+    ),
+    "samp-deliverable-hw-4": Overlay(text="Problem set, about 2h.", buffer_days=2),
+    "samp-deliverable-extra-credit-hw": Overlay(
+        text="Extra credit, about 1h.", optional=True
+    ),
+    "samp-exam-1": Overlay(
+        text="Covers Lectures 1 to 6; I've watched all of them. About 6h of "
+        "review left.",
+        major_academic=True,
+    ),
+    "samp-exam-2": Overlay(major_academic=True),
+    "samp-deliverable-project-proposal": Overlay(
+        text="Solo, one page. About 2h to write. Not started.",
+        major_academic=True,
+    ),
+    "samp-deliverable-final-project-report": Overlay(major_academic=True),
 }
 
 OVERLAY_WARNINGS: list[str] = []
@@ -432,7 +480,16 @@ def fmt_date(d: date) -> str:
     return d.strftime("%a %b %d").replace(" 0", " ")
 
 
-TASKS = [
+def sample_tasks() -> list[Task]:
+    """Sample mode's whole task list: the fake course and the fake
+    personal tasks. None of the hand-typed tasks below."""
+    return [
+        *load_parsed_tasks("sample_course", "Sample 101", SAMPLE_OVERLAY),
+        *load_personal_tasks(),
+    ]
+
+
+TASKS = sample_tasks() if SAMPLE else [
     # Coursework — Predictive and Prescriptive come from their parsed
     # syllabi plus the overlays above; everything else is still hand-typed.
     *load_parsed_tasks("predictive", "Predictive", PREDICTIVE_OVERLAY),
@@ -970,7 +1027,10 @@ def overdue_tasks() -> list[Task]:
 
 
 def agentic_class_today() -> bool:
-    """Mondays within the Agentic AI semester, except its break days."""
+    """Mondays within the Agentic AI semester, except its break days.
+    Never in sample mode, which has no Agentic AI course."""
+    if SAMPLE:
+        return False
     start, end = SEMESTERS["agentic"]
     on_break = any(
         note.course == "Agentic AI"
@@ -1625,6 +1685,11 @@ def main() -> None:
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise SystemExit("Missing ANTHROPIC_API_KEY in .env")
 
+    if SAMPLE:
+        print(
+            "SAMPLE MODE — fake data from sample/. Today is pinned to "
+            f"{TODAY.strftime('%A, %B %d, %Y')}.\n"
+        )
     first_pass, result = judge()
     print()
     print_judgment(result, first_pass)

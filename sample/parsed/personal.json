@@ -1,0 +1,38 @@
+{
+  "note": "FAKE sample data, written by hand for sample mode (python3 scripts/judgment_core.py --sample). Not real tasks; written directly, not made by the import script.",
+  "last_import": "2027-03-08",
+  "items": [
+    {
+      "source_line": "Pick up package from the post office by Mar 12, about 30 min round trip",
+      "title": "Pick up package",
+      "date": "2027-03-12",
+      "date_text": "Mar 12",
+      "id": "personal-pick-up-package",
+      "imported_on": "2027-03-08"
+    },
+    {
+      "source_line": "Friend's birthday dinner Mar 20, 7pm",
+      "title": "Birthday dinner",
+      "date": "2027-03-20",
+      "date_text": "Mar 20",
+      "id": "personal-birthday-dinner",
+      "imported_on": "2027-03-08"
+    },
+    {
+      "source_line": "Clear out email inbox, about 45 min",
+      "title": "Clear out inbox",
+      "date": null,
+      "date_text": null,
+      "id": "personal-clear-out-inbox",
+      "imported_on": "2027-03-08"
+    },
+    {
+      "source_line": "Renew car registration online by Mar 31",
+      "title": "Renew car registration",
+      "date": "2027-03-31",
+      "date_text": "Mar 31",
+      "id": "personal-renew-car-registration",
+      "imported_on": "2027-03-08"
+    }
+  ]
+}

@@ -14,6 +14,7 @@ from datetime import date
 from pathlib import Path
 
 from judgment_core import (
+    SAMPLE,
     TODAY,
     Task,
     active_tasks,
@@ -83,6 +84,11 @@ def format_briefing(result: dict) -> str:
 
 
 def main() -> None:
+    if SAMPLE:
+        raise SystemExit(
+            "Sample mode is terminal-only, nothing is sent to Telegram. "
+            "Run: python3 scripts/judgment_core.py --sample"
+        )
     load_env(ENV_PATH)
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
