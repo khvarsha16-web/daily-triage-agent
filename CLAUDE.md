@@ -363,6 +363,25 @@ already in the output count. A call is logged before the refusal and
 JSON checks, so a failed call's cost still shows. Printed only, never
 saved. A typical run is ~4k in / ~4k out, about $0.05.
 
+## Sample mode (`--sample`, added 2026-10-04)
+
+`python3 scripts/judgment_core.py --sample` runs the unchanged prompt,
+rules and checks on fake data, so the repo can be run without `data/`.
+- **Data:** `sample/parsed/sample_course.json` (one fake course, same
+  format as `data/parsed/`) and `sample/parsed/personal.json` (four fake
+  tasks), both committed; fake overlay facts are `SAMPLE_OVERLAY` in
+  `judgment_core.py`.
+- **Switch:** `SAMPLE` is read from the command line at the top of
+  `judgment_core.py` (because `TODAY` and `TASKS` are set at import
+  time). Without the flag nothing changes.
+- **Pinned today:** `SAMPLE_TODAY`, Wed Mar 10, 2027, printed in a banner
+  at the top of the output.
+- **Left out:** Moo production and posting, "talk to parents", the
+  Agentic AI Final Presentation and the Monday class.
+- **Terminal only:** `send_briefing.py --sample` exits without sending.
+- To get a different mix of Must-Do / Can-Do / Upcoming, change the fake
+  data, never the prompt or rules.
+
 ## Telegram Delivery (`scripts/send_briefing.py`)
 
 Runs the judgment once. The terminal gets the full briefing exactly as
@@ -383,9 +402,8 @@ in Telegram — those stay in the terminal.
 
 ## Next Session
 
-What's left:
+What's left (the README was written 2026-10-04):
 
-- **README** for the repo.
 - **Demo practice** for the presentation.
 - **Optional stretch — tap-to-complete:** mark a task done from the
   Telegram message itself, instead of editing code or the task file.
@@ -471,9 +489,11 @@ is assigned, update its `due` in `judgment_core.py`.
 
 ### Parked (designed earlier, not on the current list)
 
-- **Blackout window, Oct 1-12:** pause all NEW content production
-  (script/video/editing); already-scheduled posts stay fixed. The
-  Agentic AI mini-project presentation (Oct 12) counts as coursework.
+- **Blackout window, Oct 1-12 — decided not needed (2026-10-04), not
+  built.** It would have paused all NEW content production
+  (script/video/editing) with already-scheduled posts fixed. What's
+  built instead: Moo production starts earlier when a major academic
+  deadline falls inside its production window.
 - **Weekly capacity structure:** 6h budget on weekdays, 2-3h on
   weekends, both general-purpose. `DAILY_BUDGET_HOURS = 6` is still a
   single constant for every day.
