@@ -9,6 +9,12 @@ for how many hours, and why.
 - `scripts/` — the code: `judgment_core.py` (the briefing),
   `send_briefing.py` (Telegram), `extract_syllabus.py` and
   `import_personal_tasks.py` (inputs).
+  Two older files are also there. `parse_syllabus.py` is the first
+  regex-based syllabus parser; its parsing is no longer used, but
+  `extract_syllabus.py` and `import_personal_tasks.py` still import the
+  `data/` path from it, and the extractor also imports its PDF text
+  reader. `judgment_core_rules_v0.py` is the earlier rule-based version
+  of the briefing, kept for comparison; nothing imports it.
 - `sample/` — fake data for the sample run.
 - `CLAUDE.md` — design notes and the session log.
 - `requirements.txt` — the two Python packages to install.
