@@ -121,6 +121,15 @@ before a date. While today is before it, the model gets the fact "User
 chose to start this on [date] (N days away), a stated plan," and the
 displacement check skips the task.
 
+**`checkins_only`** (overlay field, added 2026-10-04): the user's own
+part of a task is done and only check-ins remain. While True, the
+displacement check skips the task, as `start_after` does. Nothing else
+changes: `completed` stays False, so the check-in facts still fire, and
+the task is still `major_academic` and still sent to the model. Set on
+the Predictive Final Project Proposal (group submission due Oct 14).
+Without it, that task was flagged on every run through its due date
+whenever the model put it in Can-Do with budget left.
+
 ### Syllabus parsing (`scripts/extract_syllabus.py`)
 
 Model extraction plus code checks, chosen over improving the regex
@@ -314,7 +323,7 @@ Run in code after every model call:
   Can-Do while ≥0.5h of budget remains (`MIN_SLICE_HOURS`), limited to
   tasks due within 10 days (`DISPLACEMENT_WINDOW_DAYS` — a guardrail
   from two data points, may need revisiting) and not before their
-  `start_after`. It does not catch content winning when the budget is
+  `start_after`, and not `checkins_only`. It does not catch content winning when the budget is
   genuinely full — that's left to model judgment and eval cases.
 - **Over budget:** Must-Do hours summed in code against the 6h budget.
 - **End of window:** a lecture with ≤2 window days left is missing from
@@ -361,7 +370,8 @@ million input / output tokens (`INPUT_PRICE_PER_MTOK`,
 `OUTPUT_PRICE_PER_MTOK`); thinking tokens are billed as output and are
 already in the output count. A call is logged before the refusal and
 JSON checks, so a failed call's cost still shows. Printed only, never
-saved. A typical run is ~4k in / ~4k out, about $0.05.
+saved. On the current version a run is about $0.09 to $0.18, higher
+when the retry fires.
 
 ## Sample mode (`--sample`, added 2026-10-04)
 

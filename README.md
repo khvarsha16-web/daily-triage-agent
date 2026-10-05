@@ -167,7 +167,7 @@ SAMPLE MODE — fake data from sample/. Today is pinned to Wednesday, March 10, 
 
 Every run prints its token counts and an estimated cost. These are the
 script's own estimates, worked out from the token counts at prices set
-in the code. On the current version a run is about $0.08 to $0.12,
+in the code. On the current version a run is about $0.09 to $0.18,
 higher when the retry fires.
 
 ### With your own data
