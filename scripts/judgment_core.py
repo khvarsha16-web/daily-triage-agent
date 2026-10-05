@@ -45,6 +45,9 @@ MODEL = "claude-sonnet-5"
 # billed as output and are already counted in usage.output_tokens.
 INPUT_PRICE_PER_MTOK = 2.00
 OUTPUT_PRICE_PER_MTOK = 10.00
+# Output limit per call, shared by thinking and the JSON answer. A call
+# that hits it exits with "Truncated at the output limit".
+MAX_OUTPUT_TOKENS = 32000
 DAILY_BUDGET_HOURS = 6
 # Smallest useful study slice: coursework left in Can-Do while at least
 # this much budget remains counts as displaced.
@@ -1157,16 +1160,20 @@ def parse_json_response(text: str) -> dict:
 CALL_COSTS: list[float] = []
 
 
-def log_usage(label: str, usage) -> None:
-    """Print one call's tokens and estimated cost, and record the cost."""
+def log_usage(label: str, usage, text: str | None) -> None:
+    """Print one call's tokens and estimated cost, and record the cost.
+    Also prints the returned answer text's size: output tokens include
+    thinking, so the answer's share is only an estimate (chars / 4)."""
     cost = (
         usage.input_tokens * INPUT_PRICE_PER_MTOK
         + usage.output_tokens * OUTPUT_PRICE_PER_MTOK
     ) / 1_000_000
     CALL_COSTS.append(cost)
+    chars = len(text or "")
     print(
         f"[{label}] input {usage.input_tokens:,} tokens, output "
-        f"{usage.output_tokens:,} tokens, est. ${cost:.4f}"
+        f"{usage.output_tokens:,} tokens, est. ${cost:.4f}; answer text "
+        f"{chars:,} chars (est. ~{chars // 4:,} tokens)"
     )
 
 
@@ -1184,13 +1191,16 @@ def get_judgment(messages: list[dict], label: str) -> tuple[dict, str]:
     client = anthropic.Anthropic()
 
     try:
-        response = client.messages.create(
+        # Streamed so a large max_tokens can't hit an HTTP timeout; the
+        # final message is the same object messages.create() returns.
+        with client.messages.stream(
             model=MODEL,
-            max_tokens=16000,
+            max_tokens=MAX_OUTPUT_TOKENS,
             system=SYSTEM_PROMPT,
             thinking={"type": "adaptive"},
             messages=messages,
-        )
+        ) as stream:
+            response = stream.get_final_message()
     except anthropic.AuthenticationError:
         raise SystemExit(
             "Anthropic API rejected the key in .env — check ANTHROPIC_API_KEY "
@@ -1199,15 +1209,25 @@ def get_judgment(messages: list[dict], label: str) -> tuple[dict, str]:
     except anthropic.APIConnectionError:
         raise SystemExit("Network error reaching the Anthropic API.")
 
-    # Logged before any exit below: a refused or unparseable call still costs.
-    log_usage(label, response.usage)
+    text = next(
+        (block.text for block in response.content if block.type == "text"), None
+    )
+
+    # Logged before any exit below: a refused, truncated or unparseable
+    # call still costs.
+    log_usage(label, response.usage, text)
 
     if response.stop_reason == "refusal":
         raise SystemExit(f"Model declined to respond: {response.stop_details}")
 
-    text = next(
-        (block.text for block in response.content if block.type == "text"), None
-    )
+    # Checked before the text and JSON checks: a cut-off answer has either
+    # half-written JSON or (cut while still thinking) no text at all.
+    if response.stop_reason == "max_tokens":
+        raise SystemExit(
+            "Truncated at the output limit "
+            f"({response.usage.output_tokens:,} output tokens)"
+        )
+
     if text is None:
         raise SystemExit(f"No text in model response: {response.content}")
 
