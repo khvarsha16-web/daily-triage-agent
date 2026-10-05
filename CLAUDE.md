@@ -325,6 +325,9 @@ Run in code after every model call:
   from two data points, may need revisiting) and not before their
   `start_after`, and not `checkins_only`. It does not catch content winning when the budget is
   genuinely full — that's left to model judgment and eval cases.
+  Because it only looks at Can-Do, a `major_academic` task placed in
+  Upcoming isn't caught — observed live on Oct 5 (Predictive Exam 1,
+  5 days out; not fixed).
 - **Over budget:** Must-Do hours summed in code against the 6h budget.
 - **End of window:** a lecture with ≤2 window days left is missing from
   Must-Do.
@@ -364,7 +367,10 @@ Cases are logged under "Eval Cases" in `notes/meeting-notes.md`.
 
 After every model call in `judgment_core.py` (first pass and, if it
 fires, the retry), code prints one line — `[first pass] input N tokens,
-output N tokens, est. $X` — and the run ends with "API cost this run:
+output N tokens, est. $X; answer text N chars (est. ~N tokens)` (the
+answer estimate is characters / 4, added 2026-10-05 to show roughly
+how much of the output was the JSON answer rather than thinking) — and
+the run ends with "API cost this run:
 est. $X (N calls)". Priced at Sonnet 5's list rates, $2 / $10 per
 million input / output tokens (`INPUT_PRICE_PER_MTOK`,
 `OUTPUT_PRICE_PER_MTOK`); thinking tokens are billed as output and are
@@ -522,6 +528,22 @@ is assigned, update its `due` in `judgment_core.py`.
   confirmation, even if both are requested in the same message.
 
 ## Known Issues
+
+- **Truncated output was reported as "could not parse"** (found and
+  fixed 2026-10-05): a judgment-core call hit the 16,000-token output
+  limit, the JSON was cut mid-item, and the run exited with "Could not
+  parse model output as JSON". Thinking tokens count toward
+  `max_tokens`, so thinking and the JSON answer share the limit, and
+  the code never checked `stop_reason`. Now: `MAX_OUTPUT_TOKENS` is
+  32000, the call is streamed (`messages.stream` +
+  `get_final_message`), and a call that stops with
+  `stop_reason == "max_tokens"` exits with "Truncated at the output
+  limit (N output tokens)" — whether the answer was cut mid-JSON or
+  the call was cut while still thinking (no text at all). Still open:
+  a run can still hit 32000 (it exits, with no retry on truncation);
+  effort, thinking and the number of claims per item are unchanged;
+  and the cost line's answer-size figure is an estimate (characters /
+  4), so the thinking share of output is only approximate.
 
 - **Claim grounding checks existence, not support** (by design,
   2026-10-01): code confirms each `fact` claim's quote appears in the
