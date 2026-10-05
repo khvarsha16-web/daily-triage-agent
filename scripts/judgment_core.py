@@ -138,7 +138,7 @@ MOO_SERIES = Series(
     name="Moo",
     first_post=date(2026, 10, 1),
     weekdays=(TUE, THU),
-    episodes_done=4,
+    episodes_done=5,
     template=MOO_EPISODE,
     next_episode_hours_left={"video generation + editing": 2},
     episodes_posted=1,  # episode 1 posted Thu Oct 1
@@ -168,6 +168,9 @@ class Task:
     # The user's own stated plan not to start before this date. Respected
     # by the displacement check and passed to the model as a fact.
     start_after: date | None = None
+    # The user's own part is done and only check-ins remain. Skipped by
+    # the displacement check; check-in facts still fire.
+    checkins_only: bool = False
     # Syllabus date range (a lecture's week, an exam window, a break),
     # shown to the model as a computed fact.
     window_start: date | None = None
@@ -218,6 +221,8 @@ class Overlay:
     booked: date | None = None
     booked_time: str = ""
     start_after: date | None = None
+    # Only check-ins remain: the displacement check skips the task.
+    checkins_only: bool = False
     major_academic: bool = False
     completed: bool = False
     # Fixed hours of a not-splittable block (e.g. a lecture's 3h).
@@ -243,9 +248,10 @@ PREDICTIVE_OVERLAY = {
         booked=date(2026, 12, 5), booked_time="11:30am", major_academic=True
     ),
     "pred-deliverable-final-project-proposal": Overlay(
-        text=f"{GROUP_DELIVERABLE} Initial group coordination done Oct 1. "
-        "Full proposal work starts Sun Oct 4.",
+        text=f"{GROUP_DELIVERABLE} My part is done; the group submission is "
+        "due Oct 14 and only check-ins remain.",
         start_after=date(2026, 10, 4),
+        checkins_only=True,
         major_academic=True,
     ),
     "pred-deliverable-preliminary-project-report": Overlay(
@@ -300,6 +306,7 @@ PRESCRIPTIVE_OVERLAY = {
         f"questions. {EXAM_WINDOW}",
         start_after=date(2026, 9, 29),
         major_academic=True,
+        completed=True,
     ),
     "pres-exam-2": Overlay(text=EXAM_WINDOW, major_academic=True),
     "pres-exam-3": Overlay(text=EXAM_WINDOW, major_academic=True),
@@ -405,6 +412,7 @@ def parsed_item_to_task(item: dict, overlay: Overlay, course: str) -> Task:
         window_start=start if start != end else None,
         window_end=end if start != end else None,
         start_after=overlay.start_after,
+        checkins_only=overlay.checkins_only,
         major_academic=overlay.major_academic,
         completed=overlay.completed,
         source_id=item["id"],
@@ -517,8 +525,8 @@ TASKS = sample_tasks() if SAMPLE else [
     *load_personal_tasks(),
     Task(
         "Moo series — episode 1 posted Thu Oct 1, then recurring every "
-        "Tue/Thu after. Episodes 1-4 fully complete (script, video, "
-        "editing done). Episode 5: script and video generation done, "
+        "Tue/Thu after. Episodes 1-5 fully complete (script, video, "
+        "editing done). Episode 6: script and video generation done, "
         "roughly 2h of editing left.",
         series=MOO_SERIES,
     ),
@@ -1215,7 +1223,8 @@ def must_do_hours(result: dict) -> float:
 
 def displaced_coursework(result: dict) -> list[dict]:
     """Can-Do items for MAJOR ACADEMIC tasks due within
-    DISPLACEMENT_WINDOW_DAYS, while at least MIN_SLICE_HOURS of budget is
+    DISPLACEMENT_WINDOW_DAYS (not before their start_after, and not
+    checkins_only), while at least MIN_SLICE_HOURS of budget is
     left after Must-Do. Study work can be split, so even a
     partial slice counts as room. Budget arithmetic is done here, not by
     the model."""
@@ -1230,6 +1239,7 @@ def displaced_coursework(result: dict) -> list[dict]:
         and tasks[item["id"]].major_academic
         and (tasks[item["id"]].due - TODAY).days <= DISPLACEMENT_WINDOW_DAYS
         and not before_start_after(tasks[item["id"]])
+        and not tasks[item["id"]].checkins_only
     ]
 
 
