@@ -16,7 +16,6 @@ for how many hours, and why.
   reader. `judgment_core_rules_v0.py` is the earlier rule-based version
   of the briefing, kept for comparison; nothing imports it.
 - `sample/` — fake data for the sample run.
-- `CLAUDE.md` — design notes and the session log.
 - `requirements.txt` — the two Python packages to install.
 - `data/` — private course documents and the personal task file. Not
   in the repository.
