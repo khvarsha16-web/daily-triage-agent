@@ -47,7 +47,7 @@ TASKS = [
     Task(
         name="Prescriptive HW2 (group) — call, edit, submit",
         due=date(2026, 9, 27),
-        context="graded homework, group call tomorrow 6pm",
+        context="graded homework, group meeting",
     ),
     Task(
         name="Prescriptive exam study (lectures 1-5 + review HW1&2)",
@@ -67,17 +67,17 @@ TASKS = [
         context="lower weight, shared group effort",
     ),
     Task(
-        name="Personal decision — decide/schedule",
+        name="Errand — decide/schedule",
         due=None,
         checkpoint_date=date(2026, 9, 23),
-        checkpoint_note="check-in at an upcoming appointment",
-        context="personally important",
+        checkpoint_note="check-in on a set date",
+        context="important",
     ),
     Task(
-        name="Personal appointment",
+        name="Fixed-time commitment",
         due=date(2026, 9, 23),
         fixed_time=True,
-        context="fixed Wed 4pm, personal commitment",
+        context="fixed Wed 4pm",
     ),
     Task(
         name="ANT series reel 11",
