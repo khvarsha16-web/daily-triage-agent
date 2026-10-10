@@ -124,7 +124,9 @@ python3 scripts/judgment_core.py --sample
 
 This uses the fake data in `sample/parsed/`: one made-up course
 ("SAMPLE 101") and four made-up personal tasks. Everything in that folder
-is fake. Sample mode:
+is fake. Claude Code wrote this sample data from a plan I approved, and
+the dates were chosen so a run shows every section. It shows the format
+of the briefing, not how the agent handles real data. Sample mode:
 
 - pins "today" to Wednesday, March 10, 2027, and prints that date at the
   top, so the fake dates always make sense;
@@ -243,6 +245,9 @@ Known limits:
   from a few observed cases, and may need adjusting.
 - **Telegram gets no warnings.** Check failures and the over-budget
   warning are shown in the terminal only.
+- **Upcoming is not checked for displaced coursework.** The displacement
+  check only looks at Can-Do, so a major exam placed in Upcoming is not
+  caught. This happened once, on Oct 5.
 
 ## What I'd add next
 
