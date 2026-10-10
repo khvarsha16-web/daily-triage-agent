@@ -100,6 +100,11 @@ Requirements: Python 3 (developed on Python 3.9.6) and an Anthropic API
 key.
 
 ```
+git clone https://github.com/khvarsha16-web/daily-triage-agent.git
+cd daily-triage-agent
+```
+
+```
 pip install -r requirements.txt
 ```
 
