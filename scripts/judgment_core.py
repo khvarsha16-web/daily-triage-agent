@@ -141,10 +141,9 @@ MOO_SERIES = Series(
     name="Moo",
     first_post=date(2026, 10, 1),
     weekdays=(TUE, THU),
-    episodes_done=5,
+    episodes_done=6,
     template=MOO_EPISODE,
-    next_episode_hours_left={"video generation + editing": 2},
-    episodes_posted=1,  # episode 1 posted Thu Oct 1
+    episodes_posted=3,  # episodes 1-3 posted (Oct 1, 6, 8)
 )
 
 
@@ -246,6 +245,7 @@ PREDICTIVE_OVERLAY = {
         booked_time="11:30am",
         start_after=date(2026, 10, 4),
         major_academic=True,
+        completed=True,
     ),
     "pred-exam-2": Overlay(
         booked=date(2026, 12, 5), booked_time="11:30am", major_academic=True
@@ -527,10 +527,9 @@ TASKS = sample_tasks() if SAMPLE else [
     # carry.
     *load_personal_tasks(),
     Task(
-        "Moo series — episode 1 posted Thu Oct 1, then recurring every "
-        "Tue/Thu after. Episodes 1-5 fully complete (script, video, "
-        "editing done). Episode 6: script and video generation done, "
-        "roughly 2h of editing left.",
+        "Moo series — episodes 1-3 posted (episode 1 on Thu Oct 1), then "
+        "recurring every Tue/Thu after. Episodes 1-6 fully complete "
+        "(script, video, editing done). Episode 7 has not been started.",
         series=MOO_SERIES,
     ),
     # Posting is split from production: one generated task for the next
@@ -538,7 +537,7 @@ TASKS = sample_tasks() if SAMPLE else [
     Task("", posting=MOO_SERIES),
     Task(
         "Talk to parents — recurring roughly every 3 days.",
-        last_done=date(2026, 9, 27),
+        last_done=date(2026, 10, 9),
         every_days=3,
     ),
 ]
