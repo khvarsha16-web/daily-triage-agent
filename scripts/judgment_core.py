@@ -1469,7 +1469,7 @@ def ungrounded_claims(result: dict) -> list[tuple[str, dict, str]]:
     """Part 2 of the no-invented-tasks check: (category, item, reason)
     for every claim that isn't grounded. Exists-check only — the quote
     must appear in its source text; whether it actually supports the
-    claim isn't checked (see Known Issues in CLAUDE.md)."""
+    claim isn't checked (see 'Checks and known limits' in the README)."""
     tasks = active_tasks()
     context = normalize(context_block())
     found = []
